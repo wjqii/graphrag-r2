@@ -54,7 +54,11 @@ bash retrieval_launch.sh
 2. 运行训练：
 ```bash
 cd /home/zhangziwei6/wujiaqi/graphrag-r1
-bash train_grpo.sh
+# 2. Stage 1: 学习检索行为
+bash verl/examples/grpo_trainer/run_qwen2_5-7b_lora_stage1.sh
+
+# 3. Stage 2: 优化答案质量（修改 STAGE1_CHECKPOINT 路径）
+bash verl/examples/grpo_trainer/run_qwen2_5-7b_lora_stage2.sh
 ```
 
 ## 依赖
