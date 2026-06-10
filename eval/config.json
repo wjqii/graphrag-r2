@@ -1,0 +1,8 @@
+{
+    "input_file": "./result/qwen_instruct_grpo/2wiki.jsonl",
+    "use_em": true,
+    "use_cover_em_1": false,
+    "use_cover_em_2": false,
+    "acc": true,
+    "use_f1": true
+}

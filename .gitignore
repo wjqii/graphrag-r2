@@ -1,0 +1,70 @@
+# ============ 大文件 / 训练产物 ============
+# FAISS 索引和大规模数据
+data/wiki_e5/
+data/wiki_e5[B/
+data/nq_search/
+
+# 训练 checkpoint
+verl_checkpoints/
+
+# Ray 临时文件
+ray_tmp/
+
+# W&B 日志
+wandb/
+
+# HippoRAG 大型输出文件
+verl/hipporag/outputs/
+
+# 临时文件
+text.txt
+
+# 日志文件
+*.log
+
+# 符号链接（指向外部大文件）
+data/hotpotqa/e5_Flat.index
+data/hotpotqa/wiki-18.jsonl
+
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ============ 环境 / 敏感信息 ============
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+
+# ============ IDE ============
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ============ 系统文件 ============
+.DS_Store
+Thumbs.db
+
+# ============ 运行时缓存 ============
+.triton/
+.config/
+
+# ============ 模型文件 ============
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+*.onnx
+
+# ============ 其他 ============
+outputs/
