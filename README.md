@@ -60,7 +60,12 @@ bash verl/examples/grpo_trainer/run_qwen2_5-7b_lora_stage1.sh
 # 3. Stage 2: 优化答案质量（修改 STAGE1_CHECKPOINT 路径）
 bash verl/examples/grpo_trainer/run_qwen2_5-7b_lora_stage2.sh
 ```
-
+3.评估
+```bash
+cd /agot/graphrag-r1/eval
+python3 calc_rule.py
+python3 run_all_eval.py
+```
 ## 依赖
 
 - verl 框架（原版 verl/wujiaqi 的依赖）
