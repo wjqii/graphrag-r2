@@ -14,6 +14,8 @@
 
 from omegaconf import ListConfig
 import os
+import json
+import ast
 from typing import List, Union
 
 import pandas as pd
@@ -53,6 +55,51 @@ def collate_fn(data_list: list[dict]) -> dict:
     output.update(tensors)
     output.update(non_tensors)
     return output
+
+
+def _safe_parse_obj(x):
+    if isinstance(x, dict):
+        return x
+
+    if x is None:
+        return {}
+
+    try:
+        if pd.isna(x):
+            return {}
+    except Exception:
+        pass
+
+    if isinstance(x, str):
+        s = x.strip()
+        if not s:
+            return {}
+
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+
+        try:
+            return ast.literal_eval(s)
+        except Exception:
+            return {"ground_truth": s}
+
+    return {}
+
+
+def _normalize_reward_model(x):
+    rm = _safe_parse_obj(x)
+
+    if isinstance(rm, dict):
+        if "ground_truth" in rm:
+            return rm
+        if "target" in rm:
+            return {"ground_truth": rm["target"], **rm}
+        if "answer" in rm:
+            return {"ground_truth": rm["answer"], **rm}
+
+    return {"ground_truth": rm}
 
 
 class RLHFDataset(Dataset):
@@ -148,8 +195,14 @@ class RLHFDataset(Dataset):
         if self.return_raw_chat:
             row_dict['raw_prompt'] = chat.tolist()
 
-        # add index for each prompt
-        index = row_dict.get("extra_info", {}).get("index", 0)
+        # normalize extra_info
+        extra_info = row_dict.get("extra_info")
+        if not isinstance(extra_info, dict):
+            extra_info = {}
+        index = extra_info.get("index", item)
         row_dict["index"] = index
+
+        # normalize reward_model
+        row_dict["reward_model"] = _normalize_reward_model(row_dict.get("reward_model"))
 
         return row_dict

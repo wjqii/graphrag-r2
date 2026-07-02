@@ -44,6 +44,7 @@ class RewardManager():
     Supports multiple reward modes controlled by `reward_mode`:
     - 'em': original exact match only (backward compatible)
     - 'stage1': format_reward + retrieve_w_decay (learn search behavior)
+    - 'stage2_fast': F1-driven reward, no <answer> => negative, format small weight
     - 'stage2': f1_plus + format_punishment (optimize answer quality)
     - 'f1_plus_format': alias for stage2 (backward compatible)
     """
@@ -86,7 +87,22 @@ class RewardManager():
             sequences = torch.cat((valid_prompt_ids, valid_response_ids))
             sequences_str = self.tokenizer.decode(sequences)
 
-            ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
+            reward_model = data_item.non_tensor_batch.get("reward_model", {})
+
+            if isinstance(reward_model, str):
+                import json, ast
+                try:
+                    reward_model = json.loads(reward_model)
+                except Exception:
+                    try:
+                        reward_model = ast.literal_eval(reward_model)
+                    except Exception:
+                        reward_model = {"ground_truth": reward_model}
+
+            if not isinstance(reward_model, dict):
+                reward_model = {"ground_truth": reward_model}
+
+            ground_truth = reward_model.get("ground_truth", reward_model.get("target", reward_model.get("answer", "")))
 
             # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
@@ -98,6 +114,12 @@ class RewardManager():
                 retrieve_score = qa_em.compute_score_retrieve_w_decay(
                     solution_str=sequences_str, ground_truth=ground_truth)
                 score = format_score + retrieve_score
+            elif self.reward_mode in ('stage2_fast',):
+                # Stage 2 fast-fix: F1-driven, no <answer> => negative, format small weight
+                score = qa_em.compute_score_stage2_fast(
+                    solution_str=sequences_str,
+                    ground_truth=ground_truth
+                )
             elif self.reward_mode in ('stage2', 'f1_plus_format'):
                 # Stage 2: f1_plus + format_punishment (optimize answer quality)
                 f1_plus_score = qa_em.compute_score_f1_plus(

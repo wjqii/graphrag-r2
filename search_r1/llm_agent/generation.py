@@ -487,105 +487,89 @@ If I want to give the final answer, I should put the answer between <answer> and
         return [self._passages2string(result) for result in results]
 
     def _batch_search(self, queries):
-        print("queries:",queries)
-        test_list=[]
+        if not queries:
+            return {"result": []}
 
-        for query in queries:
-            test_list.append(query+":test search")
+        payload_candidates = [
+            {
+                "queries": list(queries),
+                "topk": self.config.topk,
+                "return_scores": False,
+            },
+            {
+                "query": list(queries),
+            },
+        ]
 
+        last_error = None
+        for payload in payload_candidates:
+            try:
+                response = requests.post(
+                    self.config.search_url,
+                    json=payload,
+                    timeout=30,
+                )
+                if response.status_code != 200:
+                    last_error = f"status={response.status_code}, text={response.text[:500]}"
+                    continue
 
-        return {'result':test_list}
-        query_list=[]
-        # for query in queries:
-        #     query_list.append({"question":query})
+                data = response.json()
+                if "result" in data:
+                    return {"result": data["result"]}
+                if "results" in data:
+                    return {"result": data["results"]}
 
-        for query in queries:
-            query_list.append(query)
-        # payload = {
-        #     "queries": queries,
-        #     "topk": self.config.topk,
-        #     "return_scores": True
-        # }
-        # payload = {
-        #     "query": query_list
-        # }
-        # response = requests.post(self.search_url, json=payload)
+                last_error = f"bad keys: {list(data.keys())}"
+            except Exception as e:
+                last_error = repr(e)
 
-
-        payload = {
-            "query": query_list
-            # "topk": self.config.topk,
-            # "return_scores": True
-        }
-        response=requests.post(self.config.search_url, json=payload)
-        if response.status_code == 200:
-            # return response.json()
-            # mark!!!!!!!!!!
-            import json
-            # print("response.json():",response.json())
-            results={'status': 'success', 'result': []}
-            # 
-            for retrieval_result in response.json()['result']:
-                # retrieval_result=json.loads(retrieval_result[0])
-                if len(retrieval_result['docs'])>0:
-                    doc_content_list = []
-                    i=0
-                    # doc_content_list.append(retrieval_result['facts'])
-                    facts = retrieval_result['facts'][:10]
-                    facts_strings = [" ".join(fact) for fact in facts]
-                    facts_with_braces = "\n".join([f"({i+1}) {{ {fact} }}" for i, fact in enumerate(facts_strings)])
-                    facts_with_braces = re.sub(r'^\d+\s+', '', facts_with_braces)
-                    doc_content_list.append(facts_with_braces + "\n")
-                    for j in range(len(retrieval_result)):
-                        i+=1
-                        if i>3:
-                            break
-                        doc_now = re.sub(r'^\d+\s+', '', retrieval_result['docs'][j])
-                        doc_content_list.append(f"({j+1}){doc_now[:512]}\n")
-                    doc_content = ''.join(doc_content_list)
-                    results['result'].append(doc_content_list)
-            return results
-        else:
-            results={'status': 'success', 'result': []}
-            for q in query_list:
-                results['result'].append(['failed to search information'])
-            return results
+        raise RuntimeError(f"Retriever request failed. Last error: {last_error}")
 
 
     def _passages2string(self, retrieval_result):
-        format_reference = ''
-        # for idx, doc_item in enumerate(retrieval_result):
-            
-        #     content = doc_item['document']['contents']
-        #     title = content.split("\n")[0]
-        #     text = "\n".join(content.split("\n")[1:])
-        #     format_reference += f"Doc {idx+1}(Title: {title}) {text}\n"
-        # print("retrieval_result:",type(retrieval_result))
-        # print("retrieval_result:",(retrieval_result))
-        # retrieval_result=retrieval_result[0].json()
-        if len(retrieval_result)>0:
-            doc_content_list = []
-            i=0
-            # doc_content_list.append(retrieval_result['facts'])
-            # facts = retrieval_result['facts']
-            # facts_strings = [" ".join(fact) for fact in facts]
-            # facts_with_braces = "\n".join([f"({i+1}) {{ {fact} }}" for i, fact in enumerate(facts_strings)])
-            # facts_with_braces = re.sub(r'^\d+\s+', '', facts_with_braces)
-            # doc_content_list.append(facts_with_braces + "\n")
-            for j in range(len(retrieval_result)):
-                i+=1
-                if i>4:
-                    break
-                doc_now = re.sub(r'^\d+\s+', '', retrieval_result[j])
-                doc_content_list.append(f"({j+1}){doc_now[:512]}\n")
-            doc_content = ''.join(doc_content_list)
-        # doc_content = re.sub(r'^\d+\s+', '', retrieve_docs)
-        # else:
-        #     doc_content = "None"
+        if not retrieval_result:
+            return "No relevant information found."
 
-        # print("******doc_content:",doc_content)
-        # print("******")
+        doc_content_list = []
 
+        # Case 1: HippoRAG style, single result is dict with docs/facts
+        if isinstance(retrieval_result, dict):
+            facts = retrieval_result.get("facts", [])
+            docs = retrieval_result.get("docs", [])
 
-        format_reference += doc_content[:2048]
-        return format_reference
+            if facts:
+                fact_lines = []
+                for i, fact in enumerate(facts[:10]):
+                    if isinstance(fact, (list, tuple)):
+                        fact = " ".join(map(str, fact))
+                    fact_lines.append(f"Fact {i + 1}: {str(fact)}")
+                doc_content_list.append("\n".join(fact_lines) + "\n")
+
+            for j, doc in enumerate(docs[:self.config.topk]):
+                doc_content_list.append(f"Doc {j + 1}: {str(doc)[:700]}\n")
+
+            return "".join(doc_content_list)[:2048]
+
+        # Case 2: result is list[str] or list[dict]
+        if isinstance(retrieval_result, list):
+            for j, item in enumerate(retrieval_result[:self.config.topk]):
+                if isinstance(item, dict):
+                    if "document" in item:
+                        text = item["document"]
+                    elif "contents" in item:
+                        text = item["contents"]
+                    elif "text" in item:
+                        text = item["text"]
+                    elif "docs" in item:
+                        text = " ".join(map(str, item["docs"][:self.config.topk]))
+                    else:
+                        text = str(item)
+                else:
+                    text = str(item)
+
+                text = re.sub(r"^\d+\s+", "", text)
+                doc_content_list.append(f"Doc {j + 1}: {text[:700]}\n")
+
+            return "".join(doc_content_list)[:2048]
+
+        return str(retrieval_result)[:2048]

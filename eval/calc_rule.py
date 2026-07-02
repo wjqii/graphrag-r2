@@ -237,6 +237,8 @@ def eval(config):
 
 
 if __name__ == "__main__":
-    with open('config.json', 'r') as f:
+    import sys
+    cfg_path = sys.argv[1] if len(sys.argv) > 1 else "config.json"
+    with open(cfg_path, 'r') as f:
         config = json.load(f)
     eval(config)

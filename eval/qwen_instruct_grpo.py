@@ -229,37 +229,38 @@ def run(
 
 
 if __name__ == "__main__":
-    result_path = './result/qwen_instruct_grpo'
-    checkpoint_path = '../verl_checkpoints/hotpotqa-lora-grpo-qwen2.5-7b-it-parallel/actor/global_step_200/lora_adapter'
-    base_model_path = 'Qwen/Qwen2.5-7B-Instruct'
-    os.makedirs(result_path, exist_ok=True)
-    search_url = 'http://127.0.0.1:8089/retrieve'
+    import argparse
 
-    run(
-        input_parquet_path="../data/hotpotqa/test.parquet",
-        output_jsonl_path=result_path + "/hotpotqa.jsonl",
-        model_ckpt=checkpoint_path,
-        base_model_path=base_model_path,
-        search_url=search_url,
-    )
-    run(
-        input_parquet_path="../data/2wikimultihop/test.parquet",
-        output_jsonl_path=result_path + "/2wiki.jsonl",
-        model_ckpt=checkpoint_path,
-        base_model_path=base_model_path,
-        search_url=search_url,
-    )
-    # run(
-    #     input_parquet_path="../data/musique/test.parquet",
-    #     output_jsonl_path=result_path + "/musique.jsonl",
-    #     model_ckpt=checkpoint_path,
-    #     base_model_path=base_model_path,
-    #     search_url=search_url,
-    # )
-    # run(
-    #     input_parquet_path="../data/popqa/test.parquet",
-    #     output_jsonl_path=result_path + "/popqa.jsonl",
-    #     model_ckpt=checkpoint_path,
-    #     base_model_path=base_model_path,
-    #     search_url=search_url,
-    # )
+    HERE = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.dirname(HERE)
+    DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", required=True, help="Path to lora_adapter directory")
+    parser.add_argument("--base_model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--result_dir", default=os.path.join(HERE, "result", "eval_run"))
+    parser.add_argument("--search_url", default="http://127.0.0.1:8089/retrieve")
+    parser.add_argument("--max_turns", type=int, default=5)
+    parser.add_argument("--num_samples", type=int, default=50)
+    parser.add_argument("--datasets", nargs="+", default=["hotpotqa", "2wiki", "musique", "popqa"])
+    args = parser.parse_args()
+
+    os.makedirs(args.result_dir, exist_ok=True)
+
+    dataset_paths = {
+        "hotpotqa": os.path.join(DATA_ROOT, "hotpotqa", "test.parquet"),
+        "2wiki": os.path.join(DATA_ROOT, "2wikimultihop", "test.parquet"),
+        "musique": os.path.join(DATA_ROOT, "musique", "test.parquet"),
+        "popqa": os.path.join(DATA_ROOT, "popqa", "test.parquet"),
+    }
+
+    for name in args.datasets:
+        run(
+            input_parquet_path=dataset_paths[name],
+            output_jsonl_path=os.path.join(args.result_dir, f"{name}.jsonl"),
+            model_ckpt=args.checkpoint,
+            base_model_path=args.base_model,
+            search_url=args.search_url,
+            max_turns=args.max_turns,
+            num_samples=args.num_samples,
+        )

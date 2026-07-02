@@ -62,25 +62,11 @@ def subem_check(prediction, golden_answers):
 
 
 def extract_solution(solution_str):
-    """Extract the equation from the solution string."""
-    # Remove everything before the first "Assistant:"
-    # if "Assistant:" in solution_str:
-    #     solution_str = solution_str.split("Assistant:", 1)[1]
-    # elif "<|im_start|>assistant" in solution_str:
-    #     solution_str = solution_str.split("<|im_start|>assistant", 1)[1]
-    # else:
-    #     return None
-    # solution_str = solution_str.split('\n')[-1]
-
+    """Extract the final answer from the last <answer>...</answer> block."""
     answer_pattern = r'<answer>(.*?)</answer>'
-    match = re.finditer(answer_pattern, solution_str, re.DOTALL)
-    matches = list(match)
-    
-    # If there are 0 or exactly 1 matches, return None
-    if len(matches) <= 1:
+    matches = list(re.finditer(answer_pattern, solution_str, re.DOTALL))
+    if len(matches) == 0:
         return None
-    
-    # If there are 2 or more matches, return the last one
     return matches[-1].group(1).strip()
 
 
@@ -346,3 +332,84 @@ def compute_score_format_punishment(solution_str, ground_truth, format_score=0.,
         print(f"[format_punishment] score={score_val}")
 
     return score_val
+
+
+def _to_target_list(ground_truth):
+    """Normalize ground truth into a list of answer strings."""
+    if isinstance(ground_truth, dict):
+        target = ground_truth.get("target", ground_truth.get("answer", ground_truth))
+    else:
+        target = ground_truth
+    if isinstance(target, (list, tuple)):
+        return [str(x) for x in target]
+    return [str(target)]
+
+
+def _max_f1_em(answer, targets):
+    """Compute best F1/EM/precision/recall across multiple targets."""
+    best_f1 = 0.0
+    best_em = 0.0
+    best_precision = 0.0
+    best_recall = 0.0
+    for target in targets:
+        f1, p, r = f1_score_tokens(answer, target)
+        em = 1.0 if em_check(answer, target) else 0.0
+        if f1 > best_f1:
+            best_f1 = f1
+            best_precision = p
+            best_recall = r
+        best_em = max(best_em, em)
+    return best_f1, best_em, best_precision, best_recall
+
+
+def _evidence_hit(solution_str, targets):
+    """Weak evidence reward: whether retrieved information contains any gold answer."""
+    infos = re.findall(r'<information>(.*?)</information>', solution_str, flags=re.DOTALL)
+    if not infos:
+        return 0.0
+    info_text = normalize_answer(" ".join(infos))
+    for target in targets:
+        t = normalize_answer(str(target))
+        if t and t in info_text:
+            return 1.0
+    return 0.0
+
+
+def compute_score_stage2_fast(solution_str, ground_truth, format_score=0., score=1.):
+    """Fast-fix Stage2 reward: F1-driven, no <answer> => negative, format small weight."""
+    targets = _to_target_list(ground_truth)
+    answer = extract_solution(solution_str)
+    search_count = solution_str.count("<search>")
+    invalid_count = solution_str.count("My previous action is invalid")
+
+    do_print = random.randint(1, 64) == 1
+
+    # Hard punishment: search-only trajectories must not get positive reward.
+    if answer is None or answer.strip() == "":
+        reward = -0.5 - 0.05 * search_count - 0.2 * invalid_count
+        if do_print:
+            print(f"--------------------------------")
+            print(f"[stage2_fast] No <answer> found. search={search_count}, invalid={invalid_count}, reward={reward:.4f}")
+        return max(reward, -1.0)
+
+    f1, em, _, _ = _max_f1_em(answer, targets)
+    evidence = _evidence_hit(solution_str, targets)
+
+    # Main reward
+    reward = 2.0 * f1
+    reward += 0.5 * em
+    reward += 0.2 * evidence
+    reward += 0.2  # final answer exists
+
+    # Mild penalties
+    reward -= 0.05 * max(0, search_count - 3)
+    reward -= 0.2 * invalid_count
+
+    if do_print:
+        print(f"--------------------------------")
+        print(f"[stage2_fast] targets={targets}")
+        print(f"[stage2_fast] answer={answer}")
+        print(f"[stage2_fast] f1={f1:.4f}, em={em}, evidence={evidence}, search={search_count}, invalid={invalid_count}")
+        print(f"[stage2_fast] reward={reward:.4f}")
+
+    return max(reward, -1.0)
