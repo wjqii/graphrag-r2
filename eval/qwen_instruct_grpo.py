@@ -25,6 +25,14 @@ def extract_question_from_prompt(prompt_list):
         for msg in prompt_list:
             if isinstance(msg, dict) and msg.get('role') == 'user':
                 return msg.get('content', '')
+    try:
+        import numpy as np
+        if isinstance(prompt_list, np.ndarray):
+            for msg in prompt_list:
+                if isinstance(msg, dict) and msg.get('role') == 'user':
+                    return msg.get('content', '')
+    except Exception:
+        pass
     return ''
 
 
