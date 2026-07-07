@@ -1,34 +1,56 @@
-set -x
+#!/bin/bash
+# Docker 内执行 v5 训练的启动脚本
+# 容器: wujiaqi_verl_v1
+# 路径映射: /home/zhangziwei6/wujiaqi/graphrag-r1 -> /agot/graphrag-r1
 
-ENGINE=${1:-vllm}
+set -e
 
-HOME=/agot/graphrag-r1
-export PYTHONPATH="/agot/graphrag-r1:/agot/graphrag-r1/verl:$PYTHONPATH"
-export HF_HOME="/agot/verl/.cache/huggingface/"
-export WANDB_MODE=offline
-export VLLM_ATTENTION_BACKEND=XFORMERS
-export RAY_IGNORE_UNHANDLED_ERRORS=1
+echo "=== Docker v5 训练启动 ==="
+echo "时间: $(date)"
+echo ""
 
-export RAY_DISABLE_FILE_SYSTEM_MONITOR=1
-export RAY_OBJECT_SPILLING_CONFIG='{"type":"mock"}'
-export RAY_TMPDIR="/agot/graphrag-r1/ray_tmp"
-export RAY_RESOURCES='{"GPU": 1}'
+# Docker 内路径
+export HOME=/agot/graphrag-r1
+export PYTHONPATH="$HOME:$HOME/verl:$PYTHONPATH"
 
-unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+# Conda 环境
+source /opt/conda/etc/profile.d/conda.sh 2>/dev/null || source /home/zhangziwei6/anaconda3/etc/profile.d/conda.sh 2>/dev/null || true
+conda activate r1_evalue1 2>/dev/null || true
+
+# 缓存和临时目录（docker 内）
+export HF_HOME="/agot/graphrag-r1/.cache/huggingface"
+export TRITON_CACHE_DIR="/tmp/triton_cache_v5"
+export RAY_TMPDIR="/tmp/ray_v5"
+export TMPDIR=/tmp
+
+# 离线模式 + 代理清理
+export HF_HUB_OFFLINE=1
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 export NO_PROXY=127.0.0.1,localhost
 export no_proxy=127.0.0.1,localhost
+export VLLM_USAGE_STATS_COLLECTION=0
 
-# 优先用早期 Stage1，而不是最终 Stage1。
-# 不建议用 Stage1 最终 checkpoint，因为日志显示已经 search-only 化。
-#
-# 方案 A: 从 Stage1 global_step_200 继续（需要先复制 tokenizer 文件到根目录）
-#   cp $INIT_CKPT/huggingface/* $INIT_CKPT/
-# 方案 B: 如果 checkpoint 格式有问题，直接用 base model（推荐先跑这个验证 reward）
-# INIT_CKPT=/agot/graphrag-r1/verl_checkpoints/merged-v3-lora-grpo-qwen2.5-7b-it-stage1/actor/global_step_200
+# 训练配置
 INIT_CKPT=Qwen/Qwen2.5-7B-Instruct
+EXP_NAME=merged-v5-lora-grpo-qwen2.5-7b-it-stage2-fast-popqa-fix
+ENGINE=vllm
 
-EXP_NAME=merged-v4-lora-grpo-qwen2.5-7b-it-stage2-fast
+cd $HOME
 
+echo "=== 配置确认 ==="
+echo "HOME: $HOME"
+echo "EXP_NAME: $EXP_NAME"
+echo "INIT_CKPT: $INIT_CKPT"
+echo "train_files: $HOME/data/merged_v4/train.parquet"
+echo "val_files: $HOME/data/merged_v4/test_small.parquet"
+echo "total_steps: 100, save_freq: 25, test_freq: -1"
+echo ""
+
+# Ray 清理
+ray stop --force 2>/dev/null || true
+sleep 3
+
+# 启动训练
 CUDA_VISIBLE_DEVICES=3 \
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -36,7 +58,7 @@ python3 -m verl.trainer.main_ppo \
     data.train_files=$HOME/data/merged_v4/train.parquet \
     data.val_files=$HOME/data/merged_v4/test_small.parquet \
     data.train_batch_size=2 \
-    data.val_batch_size=4 \
+    data.val_batch_size=2 \
     data.max_prompt_length=3072 \
     data.max_response_length=320 \
     data.max_start_length=2048 \
@@ -49,12 +71,12 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=4 \
-    actor_rollout_ref.actor.ppo_micro_batch_size=2 \
+    actor_rollout_ref.actor.ppo_micro_batch_size=1 \
     ++actor_rollout_ref.model.lora_rank=64 \
     ++actor_rollout_ref.model.lora_alpha=128 \
     actor_rollout_ref.model.target_modules=all-linear \
     +actor_rollout_ref.model.exclude_modules='.*visual.*' \
-    actor_rollout_ref.actor.use_kl_loss=True \
+    actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0.02 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.entropy_coeff=0 \
@@ -79,17 +101,17 @@ python3 -m verl.trainer.main_ppo \
     algorithm.no_think_rl=false \
     trainer.critic_warmup=0 \
     +trainer.val_before_train=False \
-    trainer.logger='["console","wandb"]' \
+    trainer.logger='["console"]' \
     trainer.project_name='Search-R1' \
     trainer.experiment_name=$EXP_NAME \
     trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.25 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.15 \
     +ray_worker_group_gpus_per_node=0 \
-    trainer.save_freq=50 \
-    trainer.test_freq=25 \
+    trainer.save_freq=25 \
+    trainer.test_freq=-1 \
     trainer.total_training_steps=100 \
-    trainer.default_local_dir=/agot/graphrag-r1/verl_checkpoints/$EXP_NAME \
+    trainer.default_local_dir=$HOME/verl_checkpoints/$EXP_NAME \
     max_turns=5 \
     retriever.url="http://127.0.0.1:8089/retrieve" \
     retriever.topk=5 \

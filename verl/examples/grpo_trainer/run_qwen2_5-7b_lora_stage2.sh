@@ -31,8 +31,8 @@ CUDA_VISIBLE_DEVICES=4 \
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     +algorithm.reward_mode=stage2_fast \
-    data.train_files=$HOME/data/merged_v3/train.parquet \
-    data.val_files=$HOME/data/merged_v3/test_small.parquet \
+    data.train_files=$HOME/data/merged_v4/train.parquet \
+    data.val_files=$HOME/data/merged_v4/test_small.parquet \
     data.train_batch_size=4 \
     data.val_batch_size=4 \
     data.max_prompt_length=1024 \

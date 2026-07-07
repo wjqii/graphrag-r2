@@ -37,11 +37,38 @@ def extract_question_from_prompt(prompt_list):
 
 
 def extract_ground_truth(reward_model):
+    import json, ast
+    import pandas as pd
+
+    try:
+        if reward_model is None or pd.isna(reward_model):
+            return ""
+    except Exception:
+        pass
+
     if isinstance(reward_model, dict):
-        return reward_model.get('ground_truth', reward_model.get('target', ''))
-    if isinstance(reward_model, str):
-        return reward_model
-    return str(reward_model)
+        x = reward_model.get("ground_truth", reward_model.get("target", reward_model.get("answer", "")))
+    elif isinstance(reward_model, str):
+        s = reward_model.strip()
+        try:
+            obj = json.loads(s)
+        except Exception:
+            try:
+                obj = ast.literal_eval(s)
+            except Exception:
+                return s
+
+        if isinstance(obj, dict):
+            x = obj.get("ground_truth", obj.get("target", obj.get("answer", "")))
+        else:
+            x = obj
+    else:
+        x = reward_model
+
+    if isinstance(x, dict):
+        x = x.get("ground_truth", x.get("target", x.get("answer", "")))
+
+    return x
 
 
 def search_query(queries, search_url):

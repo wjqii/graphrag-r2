@@ -118,7 +118,8 @@ class RewardManager():
                 # Stage 2 fast-fix: F1-driven, no <answer> => negative, format small weight
                 score = qa_em.compute_score_stage2_fast(
                     solution_str=sequences_str,
-                    ground_truth=ground_truth
+                    ground_truth=ground_truth,
+                    data_source=data_source,
                 )
             elif self.reward_mode in ('stage2', 'f1_plus_format'):
                 # Stage 2: f1_plus + format_punishment (optimize answer quality)
@@ -142,11 +143,14 @@ class RewardManager():
                 already_print_data_sources[data_source] += 1
                 # print(sequences_str)
 
-            with open("text.txt","a") as file:
-                file.write(sequences_str)
-                file.write('\n')
-                file.write('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-                file.write('\n')
+            try:
+                with open("/home/zhangziwei6/v5_text.txt","a") as file:
+                    file.write(sequences_str)
+                    file.write('\n')
+                    file.write('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
+                    file.write('\n')
+            except Exception:
+                pass
         
         # print(f"[DEBUG] all_scores: {all_scores}")
         # print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")

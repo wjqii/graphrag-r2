@@ -68,3 +68,18 @@ Thumbs.db
 
 # ============ 其他 ============
 outputs/
+
+# ============ 本次新增 ============
+# 备份文件
+*.bak_v3
+data/merged_v3_backup/
+data/merged/
+
+# 大型模型和 checkpoint (新增)
+models/
+verl_checkpoints/
+data/merged_v2/
+
+# 训练日志
+merged-v5-lora-grpo-qwen2.5-7b-it-stage2-fast-popqa-fix.log
+v5_training.log

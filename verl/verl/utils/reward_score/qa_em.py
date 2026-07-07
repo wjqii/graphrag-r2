@@ -375,8 +375,14 @@ def _evidence_hit(solution_str, targets):
     return 0.0
 
 
-def compute_score_stage2_fast(solution_str, ground_truth, format_score=0., score=1.):
-    """Fast-fix Stage2 reward: F1-driven, no <answer> => negative, format small weight."""
+def compute_score_stage2_fast(solution_str, ground_truth, data_source=None, format_score=0., score=1.):
+    """Fast-fix Stage2 reward: F1-driven, no <answer> => negative, format small weight.
+
+    PopQA-specific penalties: stronger no-answer and over-search penalties to
+    counter the search-loop behavior observed on single-hop questions.
+    """
+    is_popqa = data_source is not None and str(data_source).lower() == "popqa"
+
     targets = _to_target_list(ground_truth)
     answer = extract_solution(solution_str)
     search_count = solution_str.count("<search>")
@@ -386,11 +392,14 @@ def compute_score_stage2_fast(solution_str, ground_truth, format_score=0., score
 
     # Hard punishment: search-only trajectories must not get positive reward.
     if answer is None or answer.strip() == "":
-        reward = -0.5 - 0.05 * search_count - 0.2 * invalid_count
+        if is_popqa:
+            reward = -1.2 - 0.15 * search_count - 0.2 * invalid_count
+        else:
+            reward = -0.8 - 0.08 * search_count - 0.2 * invalid_count
         if do_print:
             print(f"--------------------------------")
-            print(f"[stage2_fast] No <answer> found. search={search_count}, invalid={invalid_count}, reward={reward:.4f}")
-        return max(reward, -1.0)
+            print(f"[stage2_fast] No <answer> found. ds={data_source}, search={search_count}, invalid={invalid_count}, reward={reward:.4f}")
+        return max(reward, -2.0)
 
     f1, em, _, _ = _max_f1_em(answer, targets)
     evidence = _evidence_hit(solution_str, targets)
@@ -401,15 +410,21 @@ def compute_score_stage2_fast(solution_str, ground_truth, format_score=0., score
     reward += 0.2 * evidence
     reward += 0.2  # final answer exists
 
-    # Mild penalties
-    reward -= 0.05 * max(0, search_count - 3)
+    # Over-search penalties: popqa encourages 1-2 searches, others allow up to 3
+    if is_popqa:
+        reward -= 0.15 * max(0, search_count - 1)
+        if search_count <= 2:
+            reward += 0.1
+    else:
+        reward -= 0.05 * max(0, search_count - 3)
+
     reward -= 0.2 * invalid_count
 
     if do_print:
         print(f"--------------------------------")
-        print(f"[stage2_fast] targets={targets}")
+        print(f"[stage2_fast] ds={data_source}, targets={targets}")
         print(f"[stage2_fast] answer={answer}")
         print(f"[stage2_fast] f1={f1:.4f}, em={em}, evidence={evidence}, search={search_count}, invalid={invalid_count}")
         print(f"[stage2_fast] reward={reward:.4f}")
 
-    return max(reward, -1.0)
+    return max(reward, -2.0)

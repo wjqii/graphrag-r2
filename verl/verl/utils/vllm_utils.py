@@ -191,14 +191,13 @@ class VLLMHijack:
                             weights_mapper=hf_to_vllm_mapper,
                         )
                     else:
-                        rank = peft_config.get("r", peft_config.get("rank", 8))
-                        lora_alpha = peft_config.get("lora_alpha", 16)
+                        from vllm.lora.peft_helper import PEFTHelper
+                        peft_helper = PEFTHelper.from_dict(peft_config)
 
                         lora = self._lora_model_cls.from_lora_tensors(
                             lora_model_id=lora_request.lora_int_id,
-                            rank=rank,
-                            lora_alpha=lora_alpha,
                             tensors=lora_tensors,
+                            peft_helper=peft_helper,
                             device="cpu",
                             dtype=self.lora_config.lora_dtype,
                             embeddings=None,
